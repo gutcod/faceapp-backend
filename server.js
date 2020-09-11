@@ -1,100 +1,34 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const cors = require('cors');
 const bcrypt = require('bcrypt-nodejs');
+const cors = require('cors');
 const knex = require('knex');
 
-const postgres = knex({
-    client: 'pg',
-    connection: {
-      host : '127.0.0.1',
-      user : 'andreigutan',
-      password : '',
-      database : 'smart-brain'
-    }
-  });
+const register = require('./controllers/register');
+const signin = require('./controllers/signin');
+const profile = require('./controllers/profile');
+const image = require('./controllers/image');
+
+const db = knex({
+  client: 'pg',
+  connection: {
+    connectionString: process.env.DATABASE_URL,
+    ssl: true,
+  }
+});
 
 const app = express();
+
+app.use(cors())
 app.use(bodyParser.json());
-app.use(cors());
 
-app.get('/', (req,res)=>{
-    res.send(database.users);
-})
+app.get('/', (req, res)=> { res.send('it is working') })
+app.post('/signin', signin.handleSignin(db, bcrypt))
+app.post('/register', (req, res) => { register.handleRegister(req, res, db, bcrypt) })
+app.get('/profile/:id', (req, res) => { profile.handleProfileGet(req, res, db)})
+app.put('/image', (req, res) => { image.handleImage(req, res, db)})
+app.post('/imageurl', (req, res) => { image.handleApiCall(req, res)})
 
-app.post('/signin', (req,res)=>{
-    postgres.select('email','hash').from('login')
-    .where('email','=',req.body.email)
-    .then(data=>{
-       const isValid = bcrypt.compareSync(req.body.password, data[0].hash)
-       if (isValid){
-          return postgres.select('*').from('users')
-           .where('email','=',req.body.email)
-           .then(user=>{
-               res.json(user[0]);
-           })
-           .catch(err=>res.status(400).json('unable to get usser'))
-       }else{
-        res.status(400).json('wrong credentials')
-       } 
-    })
-    .catch(err=>res.status(400).json('invalid password'))
-
-})
-
-app.post('/register', (req,res)=>{
-    const {name,password,email} = req.body;
-    const hash = bcrypt.hashSync(password);
-    postgres.transaction(trx=>{
-        trx.insert({
-            hash: hash,
-            email: email
-        })
-        .into('login')
-        .returning('email')
-        .then(loginEmail=>{
-            return trx('users')
-            .returning('*')
-            .insert({
-                email: loginEmail[0],
-                name: name,
-                joined: new Date()
-            })
-            .then(user=>{
-                res.json(user[0])
-            })
-        })
-        .then(trx.commit).catch(trx.rollback)
-    })
-    .catch(err=>{
-        res.status(400).json("uneble to join")
-    })
-})
-
-app.get('/profile/:id', (req,res)=>{
-    const { id } = req.params;
-    postgres.select('*').from('users').where({
-        id:id
-    }).then(user=>{
-        if(user.length){
-            res.json(user[0]);
-        } else {
-            res.status(400).json('Not Found')
-        }    
-    })
-    .catch(err=>res.status(400).json('error getting user'))
-
-})
-
-app.put('/image', (req,res)=>{
-    const { id } = req.body;
-    postgres('users').where('id', '=', id)
-    .increment('entries', 1)
-    .returning('entries')
-    .then(entries=>res.json(entries[0]))
-    .catch(err=>res.status(400).json('unable to get entries'))
-})
-
-app.listen(process.env.PORT || 3000,()=>{
-    console.log(`app is runing on port ${process.env.PORT}`);
+app.listen(process.env.PORT || 3000, ()=> {
+  console.log(`app is running on port ${process.env.PORT}`);
 })
